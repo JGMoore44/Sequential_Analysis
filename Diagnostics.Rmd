@@ -1,0 +1,227 @@
+---
+title: "Diagnostics"
+author: "Jimmy G. Moore"
+date: "October 12, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE}
+
+## Transpose and Deitentify the columns to allow smooth manipulation
+transposeDeIdentify = function(xFeature, numRows, numCols){
+  #initialize matrix
+  inMatrix = matrix(0,nrow = numRows,ncol = numCols)
+  
+  xFeature = xFeature[,2:(numRows+1)]
+  #transpose and deitentify feature names
+  for (i in 1:numCols) {
+    transItDat = t(xFeature[i,])
+    colnames(transItDat) = NULL
+    inMatrix[,i] = transItDat
+  }
+  #return transformed data frame
+  return(combineToOneCol(inMatrix))
+}
+
+####
+##Function used to combine into one feature in data frame
+combineToOneCol = function(matrixOfVal){
+  longRow = c(matrixOfVal[,1],matrixOfVal[,2])
+  for (i in 3:(dim(matrixOfVal)[2])) {
+    longRow = c(longRow,matrixOfVal[,i])
+  }
+  return(longRow)
+}
+## End Function
+
+####
+##read in results
+setwd("C:/2018_Fall/Research/Sequential_Analysis/simulationFiles")
+covDist = read.csv(file = "smallSampCoverageDist.csv")
+lambdaDist = read.csv(file = "smallSampLambdaEstDist.csv")
+lBoundDist = read.csv(file = "smallSampLowerBoundDist.csv")
+uBoundDist = read.csv(file = "smallSampUpperBoundDist.csv")
+resultsTab = read.csv(file = "smallSampResultsTable.csv")
+nSizeDist = read.csv(file = "smallSampSampleSizeDist.csv")
+
+
+nsims = 5000
+numdVals = 12
+
+dVals = c(1.021,1.02,1.019,1.018,1.017,1.016,1.015,1.014,1.013,1.012,1.011,1.01)
+dValSeq = factor(c(rep(1.021,nsims),rep(1.02,nsims),rep(1.019,nsims),rep(1.018,nsims),rep(1.017,nsims),rep(1.016,nsims),
+            rep(1.015,nsims),rep(1.014,nsims),rep(1.013,nsims),rep(1.012,nsims),rep(1.011,nsims),rep(1.01,nsims)))
+
+#big Data Frame
+bigData = data.frame(dLevels = dValSeq,
+                    nSize = transposeDeIdentify(nSizeDist,5000,12),
+                    lambdaEst = transposeDeIdentify(lambdaDist,5000,12),
+                    coverage = factor(transposeDeIdentify(covDist,5000,12)),
+                    lower = transposeDeIdentify(lBoundDist,5000,12),
+                    upper = transposeDeIdentify(uBoundDist,5000,12))
+```
+
+### Display Initial Results
+```{r}
+resultsTab = resultsTab[,(2:dim(resultsTab)[2])]
+resultsTab
+```
+
+## Show Performance of Lambda Estimate
+### For these Examples D=1.015
+```{r}
+#Do Christmas Tree Plot on D value = 1.015
+d15Frame = bigData[which(bigData$dLevels == '1.015'),]
+
+library(ggplot2)
+dIndex = 7
+d = dVals[dIndex]
+##### Cool Plot
+#create a density plot with data
+#Add line for population parameter (5)
+#Add lower (5/d) and upper(5*d) bound lines
+coolPlot = ggplot(data = d15Frame,aes(x=lambdaEst))+
+  geom_density(fill = "green",alpha = 0.2)+
+  geom_vline(aes(xintercept = 5),color = "green",size=1)+
+  geom_vline(aes(xintercept = 5/d),color = "red",size=1)+
+  geom_vline(aes(xintercept = 5*d),color = "red",size = 1)
+
+#Not sure what this step does but is seems to store all data from geom_plot
+subPlot = ggplot_build(coolPlot)$data[[1]]
+
+#add colors based on subsets
+coolPlot = coolPlot +
+  geom_area(data = subset(subPlot,x>(5/d)& x<(5*d)),aes(x=x,y=y),fill = "green",alpha = 0.75)+
+  geom_area(data = subset(subPlot,x>(5*d)),aes(x=x,y=y),fill = "red",alpha = 0.6)+
+  geom_area(data = subset(subPlot,x<(5/d)),aes(x=x,y=y),fill = "red",alpha = 0.6)+
+  xlab("Lambda Estimate")+
+  ylab("Density")+
+  ggtitle("Coverage at d=1.015")
+coolPlot
+
+####
+## Plot N on Lambda Est
+ggplot(data = d15Frame,aes(x=nSize,y=lambdaEst,color = coverage))+
+  geom_point()+
+  geom_vline(aes(xintercept = 114.69),color = "blue",size = 0.5)+
+  ggtitle("Estimation with d=1.015")+
+  xlab("Sample Size")+
+  ylab("Lambda Estimate")
+
+
+```
+
+
+## Check Standard Errors
+
+```{r}
+halfData = bigData[which(bigData$dLevels == '1.02' | bigData$dLevels == '1.018' | bigData$dLevels =='1.016' | bigData$dLevels=='1.014' | bigData$dLevels == '1.012' | bigData$dLevels=='1.01'),]
+
+ggplot(data = halfData,aes(x=lambdaEst, color = dLevels))+
+  geom_density(size=1.5)+
+  ggtitle("Distribution of Estimate Lambda w.r.t d Level")+
+  xlab("Estimated Lambda")
+```
+
+### Association between $\hat\lambda$ standard error and d
+Th First plot will show the relationship between standard deviation and our d value
+```{r, echo = FALSE}
+dValvSD = data.frame(x = resultsTab[,1],
+                     y = resultsTab[,11])
+ggplot(data = dValvSD, aes(x = x,y = y))+
+  geom_point()+
+  geom_smooth(method = "lm")+
+  ggtitle("Standard Error of Lambda Est on D-Val")+
+  xlab("D")+
+  ylab("Standard Error")
+```
+
+Next we will look at the realtionship between sample size and standard deviation.
+```{r, echo = FALSE}
+SSvsSD = data.frame(x = resultsTab[,3],
+                    y = resultsTab[,11])
+
+ggplot(data = SSvsSD, aes(x = x,y = y))+
+  geom_point()+
+  geom_smooth(method="loess",formula = y~log(x))+
+  ggtitle("Estimator Standard Error on Sample Size")+
+  xlab("Sample Size")+
+  ylab("Standard Error")
+```
+
+The above plot shows that $\hat\lambda$ is consistent, meaning as sample size increases our variance converges to 0. Unfortunately, as our sample size increases, the width of our confidence interval gets smaller. Therefore we do not see a significant change in our coverage probability.
+
+Next we will look at the realtionship between d-Value and standard error of our Sample Size estimation.
+
+```{r}
+SSvsSD = data.frame(x = resultsTab[,1],
+                    y = resultsTab[,4])
+
+ggplot(data = SSvsSD, aes(x = x,y = y))+
+  geom_point()+
+  geom_smooth(method="loess",formula = y~log(x))+
+  ggtitle("Sample Size Standard Error on D-Value")+
+  xlab("D-Value")+
+  ylab("Sample Standard Error")
+```
+
+
+## Analysis of Sequential Confidence Interval
+### Distribution of Upper and Lower Bounds
+
+First let us take a look at the distribution of our upper and lower bounds as they relate to d. To keep the plot from being too busy we have omitted half of the d values, however the general trend of the data is clear.
+
+```{r,warning=FALSE,message=FALSE}
+
+ggplot(data=halfData,aes(x=lower,color = dLevels))+
+  geom_density(size = 1.5)+
+  scale_x_continuous(limits = c(3.8,6.5))+
+  ggtitle("Distribution of Lower Limits of CI")+
+  xlab("Lower Limit")
+
+ggplot(data=halfData,aes(x=upper,color = dLevels))+
+  geom_density(size=1.5)+
+  scale_x_continuous(limits = c(3.8,6.5))+
+  ggtitle("Distribution of Upper Limits of CI")+
+  xlab("Upper Limit")
+```
+
+
+We can see that the the distributions ofthe lower and upper bounds of our confidence interval follow a similar shape to that of a our lambda estimator. This is because the bounds of CI are generated from our consistent estimator for lambda. Therefore, the variance in our bounds converges to 0 as sample size increases. To get another perspective on this we will next generate a table displaying distributional information for our upper and lower bounds.
+
+
+```{r}
+boundsTable = matrix(0,nrow = 12, ncol = 9)
+colnames(boundsTable) = c("dValue","Low Theo","Lower Mean","Low Theo/Obs","Lower StErr",
+                          "Upper Theo","Upper Mean","U Theo/Obs","Upper StErr")
+for(i in 1:12){
+  boundsTable[i,1] = resultsTab[i,1]
+  boundsTable[i,2] = 5/(resultsTab[i,1])
+  boundsTable[i,3] = mean(bigData$lower[which(bigData$dLevels==dVals[i])])
+  boundsTable[i,4] = boundsTable[i,2]/boundsTable[i,3]
+  boundsTable[i,5] = sd(bigData$lower[which(bigData$dLevels==dVals[i])])
+  boundsTable[i,6] = 5*(resultsTab[i,1])
+  boundsTable[i,7] = mean(bigData$upper[which(bigData$dLevels==dVals[i])])
+  boundsTable[i,8] = boundsTable[i,6]/boundsTable[i,7]
+  boundsTable[i,9] = sd(bigData$upper[which(bigData$dLevels==dVals[i])])
+}
+boundsTable
+```
+ 
+ 
+ We can see that the standard error of our bouds distributions are decreasing with d value. Also, it can be noted that the standard error is symetric for both upper and lower bounds. Although the variability of our bounds estimators is decreasing, we also should note that our interval is getting small as d gets smaller. This is displayed in the proceeding figure.
+ 
+ 
+```{r}
+widthDistribution = bigData$upper-bigData$lower
+widthFrame = data.frame(dValue = bigData$dLevels,
+                        width = widthDistribution)
+ggplot(data = widthFrame, aes(x = width, color = dValue))+
+  geom_density(size = 1)+
+  ggtitle("Width of CI")+
+  xlab("upper limit - lower limit")
+```
